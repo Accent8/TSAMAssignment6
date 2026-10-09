@@ -10,6 +10,8 @@
 #include <vector>
 #include <algorithm>
 #include <map>
+#include <cstring>
+#include <arpa/inet.h>
 
 int setUpListen(int port) {
     int listenSock = socket(AF_INET, SOCK_STREAM, 0);
@@ -58,13 +60,39 @@ void acceptClient(int listenSock, std::vector<pollfd>& fds) {
 bool handleClient(int clientSock, std::string& clientBuff) {
     char buff[2048];
     ssize_t n = recv(clientSock, buff, sizeof(buff), 0);
-    size_t pos;
-    clientBuff.append(buff, n);
     if (n > 0) {
-        while((pos = clientBuff.find('\n')) != std::string::npos) {
-            std::string msg = clientBuff.substr(0, pos);
-            clientBuff.erase(0, pos + 1);
-            std::cout << "Client " << clientSock << ": " << msg << std::endl;
+        clientBuff.append(buff, n);
+        while(true) {
+            if (clientBuff.length() < 4) {
+                break;
+            }
+            if (clientBuff[0] != '\x01') {
+                size_t pos = clientBuff.find('\x01');
+                if (pos != std::string::npos) {
+                    clientBuff.erase(0, pos);
+                    continue;
+                } else {
+                    clientBuff.clear();
+                    break;
+                }
+            }
+            uint16_t netLen;
+            std::memcpy(&netLen, clientBuff.data() + 1, 2);
+            uint16_t len = ntohs(netLen);
+            if (len < 5 || len > 5000 || clientBuff[3] != '\x02') {
+                clientBuff.erase(0, 1); // Drop the first byte
+                continue;
+            }
+            if (clientBuff.size() < len) {
+                break;
+            }
+            if (clientBuff[len - 1] != '\x03') {
+                clientBuff.erase(0, 1);
+                continue;
+            }
+            std::string cmd = clientBuff.substr(4, len - 5);
+            clientBuff.erase(0, len);
+            std::cout << "Client " << clientSock << ": " << cmd << std::endl;
         }
         return true;
     } else if (n == 0) {
