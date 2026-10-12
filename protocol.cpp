@@ -4,7 +4,7 @@
 #include <sys/socket.h>
 #include <cerrno>
 
-std::string buildFrame(const std::string& payload) {
+std::string packMsg(const std::string& payload) {
     std::string frame;
     size_t totalLength = payload.size() + FRAME_OVERHEAD;
     if (totalLength > MAX_FRAME) {
@@ -37,7 +37,7 @@ bool sendMsg(int fd, const std::string& data) {
     return true;
 }
 
-bool extractFrame(std::string& buf, std::string& out) {
+bool unpackMsg(std::string& buf, std::string& out) {
     if (buf.length() < 4) {
         return false;
     }
@@ -68,4 +68,11 @@ bool extractFrame(std::string& buf, std::string& out) {
     std::string out = buf.substr(HEADER_SIZE, len - FRAME_OVERHEAD);
     clientBuff.erase(0, len);
     return true;
+}
+
+std::string timestamp(){
+    time_t curr= time(nullptr);
+    char buf[32];
+    strftime(buf, sizeof buf, "%d.%m.%Y - %H:%M:%S", localtime(&curr));
+    return buf
 }
