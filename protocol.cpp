@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <cerrno>
 #include <cstring>
+#include <ctime>
 
 std::string packMsg(const std::string& payload) {
     std::string frame;
@@ -82,5 +83,5 @@ std::string timestamp(){
     time_t curr= time(nullptr);
     char buf[32];
     strftime(buf, sizeof buf, "%d.%m.%Y - %H:%M:%S", localtime(&curr));
-    return buf
+    return buf;
 }
