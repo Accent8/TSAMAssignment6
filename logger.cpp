@@ -15,6 +15,7 @@ void logLine(const std::string& msg) {
     std::string line = timestamp() + " " + msg;
     std::cout << line << '\n';
     if (logFile) {
+        // endl flushes, so if server crashes the log is ok
         logFile << line << std::endl;
     }
 }
