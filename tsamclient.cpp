@@ -16,7 +16,7 @@
 //connects to the server
 int connecttoServer(const char* ip, const char* port){
     //describe what kind of address we want
-    struct addrinfo hints, *svr; //hint= what you are asking for, svr(server) points to the results
+    struct addrinfo hints, *svr, *p; //hint= what you are asking for, svr(server) points to the results
     memset(&hints, 0, sizeof(hints));
     hints.ai_family= AF_INET; //ipv4
     hints.ai_socktype= SOCK_STREAM; //tcp
@@ -28,23 +28,23 @@ int connecttoServer(const char* ip, const char* port){
     }
 
     //getaddrinfo can ret many addresses, try all until conects
-    int socket= -1;
-    for(p= svr; p != nullptr; p->ai_next){
-        socket= socket(p-> ai_family, p-> ai_socktype, p-> ai_protocol); //socket(svr->ai_family, svr->ai_socktype, svr->ai_protocol) ef thad a ad vera haegt ad breita hints
-        if (socket < 0) continue;
-        if (connect(socket, svr-> ai_addr, svr->ai_addrlen)== 0) break; //connected
+    int sock= -1;
+    for(p= svr; p != nullptr; p= p->ai_next){
+        sock= socket(p-> ai_family, p-> ai_socktype, p-> ai_protocol); //socket(svr->ai_family, svr->ai_socktype, svr->ai_protocol) ef thad a ad vera haegt ad breita hints
+        if (sock < 0) continue;
+        if (connect(sock, p-> ai_addr, p->ai_addrlen)== 0) break; //connected
         close(sock);
-        socket= -1;
+        sock= -1;
     }
 
    freeaddrinfo(svr);
-   if (socket <0){
+   if (sock <0){
     perror("could not connect to server");
    }
-   return socket;
+   return sock;
 }
 
-//packs a comand line in a frame and sends to server
+//packs a command line in a frame and sends to server
 bool sendCommand(int sock, std::string line){
     //if (!line.empty() && line.back()== '\r') line.pop_back(); //Remove a trailing '\r' (e.g. input pasted from Windows)
     if (line.empty()) return true;
@@ -66,7 +66,8 @@ bool sendCommand(int sock, std::string line){
 
 }
 
-bool userInput(int sock, std::string& inputBuffer){
+//reads what the user typed and sends every complete line
+bool userInput(int sock, std::string &inputBuffer){
     char buffer[1024];
     ssize_t bytes_read= read(STDIN_FILENO, buffer, sizeof(buffer));
     if (bytes_read<0){
@@ -74,13 +75,13 @@ bool userInput(int sock, std::string& inputBuffer){
         perror("reading from stdin failed");
         return false;
     }
-    if(bytes_read== 0){
+    else if(bytes_read== 0){
         if (!inputBuffer.empty()) sendCommand(sock, inputBuffer);
         return false;
-    }
+    } else{
     inputBuffer.append(buffer, bytes_read);
+    }
 
-    size_t pos;
     while (true)
     {
         size_t pos= inputBuffer.find('\n');
@@ -91,34 +92,82 @@ bool userInput(int sock, std::string& inputBuffer){
         inputBuffer.erase(0, pos + 1);
         if (!sendCommand(sock, line)) return false;
     }
+    return true;    
+}
+
+//reads what the server sent and prints every complete frame
+bool serverData(int sock, std::string &responsBuffer){
+    char buffer[5000];
+    ssize_t n= recv(sock, buffer, sizeof(buffer), 0);
+    if(n== 0){
+        printf("server closed the connection\n");
+        return false;
+    }
+    else if(n < 0){
+        if(errno== EINTR) return true; //interrupted, try again
+        perror("receving the respons from server failed");
+        return false;
+    } else{
+        responsBuffer.append(buffer, n);
+    }
+
+    //one recv can hold part of a frame or several frames so we keep the bytes
+    // in the responsBuffer and prints every complete frame
+    std::string respons;
+    while(unpackMsg(responsBuffer, respons)){
+        printf("[%s] responce: %s\n", timestamp().c_str(), respons.c_str());
+    }
+    fflush(stdout);
     return true;
-    
 }
 
 int main(int argc, char* argv[]) {
 
-    
-    int socket;
-    //int nread;
-    //char buffer[1025];
-    //bool finished;
-
-    //check that we got 2 arguments
+    //check that we got 3 arguments
     if(argc != 3){
-        printf("should be 3 arguments: <client> <ip> <port>");
-        printf("ctrl-c to terminate");
+        printf("should be 3 arguments: <client> <ip> <port>\n");
+        printf("ctrl-c to quit\n");
         exit(1);
     }
 
-    //describe what kind of address we want
+    //prevent killing the client if the conection to the server is closed
+    signal(SIGPIPE, SIG_IGN);
 
+    int serverSocket= connecttoServer(argv[1], argv[2]);
+    if (serverSocket< 0) exit(1);
 
-    //turn the ip and port strings into a socket address we can connect to
+    printf("Connected to server\n");
+    printf("type a command (SENDMSG,<from>,<to>,<msg> / GETMSG,<username> / STATUSREQ)");
+    fflush(stdout);
 
+    //watch stdin and the socket at the same time, to prevent busy 
+    // waiting use poll() to block until one of them has data
+    struct pollfd fds[2];
+    fds[0]= {STDIN_FILENO, POLLIN, 0};
+    fds[1]= {serverSocket, POLLIN, 0};
 
-   //blabla
+    std::string responsBuffer; //
+    std::string inputBuffer; //
 
-   close(socket);
+    bool running= true;
+    while(running){
+        int n= poll(fds, 2, -1);
+        if(n < 0){
+            if (errno== EINTR) continue;
+            perror("poll failed");
+            break;
+        }
+
+        //
+        if(fds[1].revents & (POLLIN | POLLHUP | POLLERR)){
+            running= serverData(serverSocket, responsBuffer);
+        }
+        if(running && (fds[0].revents & (POLLIN | POLLHUP))){
+            running= userInput(serverSocket, inputBuffer);
+        }
+    }
+
+   close(serverSocket);
    return 0;
 
 
