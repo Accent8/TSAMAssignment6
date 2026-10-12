@@ -28,7 +28,6 @@ int main(int argc, char* argv[]) {
 
     
     int serverSocket;
-    //int nwrite; //maybe need, a local variable in sendAll() can replace it
     //int nread;
     //char buffer[1025];
     //bool finished;
