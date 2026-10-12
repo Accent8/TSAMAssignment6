@@ -1,8 +1,10 @@
+#include <iostream>
 #include "protocol.h"
 #include <string>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <cerrno>
+#include <cstring>
 
 std::string buildFrame(const std::string& payload) {
     std::string frame;
@@ -38,34 +40,40 @@ bool sendMsg(int fd, const std::string& data) {
 }
 
 bool extractFrame(std::string& buf, std::string& out) {
-    if (buf.length() < 4) {
-        return false;
-    }
-    if (buf[0] != '\x01') {
-        size_t pos = buf.find('\x01');
-        if (pos != std::string::npos) {
-            buf.erase(0, pos);
-            continue;
-        } else {
-            buf.clear();
+    while (true) {
+        if (buf.length() < HEADER_SIZE) {
             return false;
         }
+        if (buf[0] != SOH) {
+            size_t pos = buf.find(SOH);
+            if (pos != std::string::npos) {
+                std::cerr << "Skipping til next SOH" << std::endl;
+                buf.erase(0, pos);
+                continue;
+            } else {
+                buf.clear();
+                std::cerr << "No SOH" << std::endl;
+                return false;
+            }
+        }
+        uint16_t netLen;
+        std::memcpy(&netLen, buf.data() + 1, 2);
+        uint16_t len = ntohs(netLen);
+        if (len < FRAME_OVERHEAD || len > MAX_FRAME || buf[3] != STX) {
+            std::cerr << "Bad STX or length out of range" << std::endl;
+            buf.erase(0, 1); // Drop the first byte
+            continue;
+        }
+        if (buf.size() < len) {
+            return false;
+        }
+        if (buf[len - 1] != ETX) {
+            std::cerr << "Bad ETX" << std::endl;
+            buf.erase(0, 1);
+            continue;
+        }
+        out = buf.substr(HEADER_SIZE, len - FRAME_OVERHEAD);
+        buf.erase(0, len);
+        return true;
     }
-    uint16_t netLen;
-    std::memcpy(&netLen, buf.data() + 1, 2);
-    uint16_t len = ntohs(netLen);
-    if (len < 5 || len > 5000 || buf[3] != '\x02') {
-        buf.erase(0, 1); // Drop the first byte
-        continue;
-    }
-    if (buf.size() < len) {
-        return false;
-    }
-    if (buf[len - 1] != '\x03') {
-        buf.erase(0, 1);
-        continue;
-    }
-    std::string out = buf.substr(HEADER_SIZE, len - FRAME_OVERHEAD);
-    clientBuff.erase(0, len);
-    return true;
 }
