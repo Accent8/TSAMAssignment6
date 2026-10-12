@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <cerrno>
 #include <cstring>
+#include <ctime>
 
 std::string packMsg(const std::string& payload) {
     std::string frame;
