@@ -9,11 +9,10 @@ static std::string handleStatusReq(const Mailbox& mailbox) {
     std::string result;
     for (const auto& [user, queue] : mailbox) {
         if (!queue.empty()) {
-            if (result.empty()) {
-                result += ","; // separator only between the entries
-            } else {
-                result += user + ":" + std::to_string(queue.size());
+            if (!result.empty()) {
+                result += ",";   // separator only between entries
             }
+            result += user + ":" + std::to_string(queue.size());
         }
     }
     return result;
@@ -29,7 +28,7 @@ static std::string handleSendMsg(const std::string& args, Mailbox& mailbox) {
     }
     size_t c2 = args.find(',', c1 + 1); // end of to
     if (c2 == std::string::npos) {
-        return "ERROR, missing field";
+        return "ERROR, missing fields";
     }
 
     // cut the message up

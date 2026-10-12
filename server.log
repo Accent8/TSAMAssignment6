@@ -1,0 +1,25 @@
+12.10.2026 - 21:10:27 Server listening on port: 4044
+12.10.2026 - 21:10:40 Client 127.0.0.1:60527 (fd 5) connected
+12.10.2026 - 21:10:46 recv from 127.0.0.1:60527 (fd 5): STATUSREQ
+12.10.2026 - 21:10:46 send to 127.0.0.1:60527 (fd 5): EMPTY
+12.10.2026 - 21:10:58 recv from 127.0.0.1:60527 (fd 5): SENDMSG,alice,bob,hello bob
+12.10.2026 - 21:10:58 send to 127.0.0.1:60527 (fd 5): OK
+12.10.2026 - 21:11:08 recv from 127.0.0.1:60527 (fd 5): SENDMSG,carol,bob,hi, with a comma
+12.10.2026 - 21:11:08 send to 127.0.0.1:60527 (fd 5): OK
+12.10.2026 - 21:11:13 recv from 127.0.0.1:60527 (fd 5): SENDMSG,alice,dave,hey dave
+12.10.2026 - 21:11:13 send to 127.0.0.1:60527 (fd 5): OK
+12.10.2026 - 21:11:16 recv from 127.0.0.1:60527 (fd 5): STATUSREQ
+12.10.2026 - 21:11:16 send to 127.0.0.1:60527 (fd 5): bob:2,dave:1
+12.10.2026 - 21:11:23 recv from 127.0.0.1:60527 (fd 5): GETMSG,bob
+12.10.2026 - 21:11:23 send to 127.0.0.1:60527 (fd 5): alice,hello bob
+12.10.2026 - 21:11:28 recv from 127.0.0.1:60527 (fd 5): GETMSG,bob
+12.10.2026 - 21:11:28 send to 127.0.0.1:60527 (fd 5): carol,hi, with a comma
+12.10.2026 - 21:11:32 recv from 127.0.0.1:60527 (fd 5): GETMSG,bob
+12.10.2026 - 21:11:32 send to 127.0.0.1:60527 (fd 5): NONE
+12.10.2026 - 21:11:36 recv from 127.0.0.1:60527 (fd 5): STATUSREQ
+12.10.2026 - 21:11:36 send to 127.0.0.1:60527 (fd 5): dave:1
+12.10.2026 - 21:11:42 recv from 127.0.0.1:60527 (fd 5): SENDMSG,alice
+12.10.2026 - 21:11:42 send to 127.0.0.1:60527 (fd 5): ERROR, missing fields
+12.10.2026 - 21:11:45 recv from 127.0.0.1:60527 (fd 5): HELLO
+12.10.2026 - 21:11:45 send to 127.0.0.1:60527 (fd 5): ERROR, unknown command
+12.10.2026 - 21:11:50 Client 127.0.0.1:60527 (fd 5) disconnected

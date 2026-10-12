@@ -105,7 +105,7 @@ bool serverData(int sock, std::string &responsBuffer){
     }
     else if(n < 0){
         if(errno== EINTR) return true; //interrupted, try again
-        perror("receving the respons from server failed");
+        perror("receving the response from server failed");
         return false;
     } else{
         responsBuffer.append(buffer, n);
@@ -115,7 +115,7 @@ bool serverData(int sock, std::string &responsBuffer){
     // in the responsBuffer and prints every complete frame
     std::string respons;
     while(unpackMsg(responsBuffer, respons)){
-        printf("[%s] responce: %s\n", timestamp().c_str(), respons.c_str());
+        printf("[%s] response: %s\n", timestamp().c_str(), respons.c_str());
     }
     fflush(stdout);
     return true;
@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
     if (serverSocket< 0) exit(1);
 
     printf("Connected to server\n");
-    printf("type a command (SENDMSG,<from>,<to>,<msg> / GETMSG,<username> / STATUSREQ)");
+    printf("type a command (SENDMSG,<from>,<to>,<msg> / GETMSG,<username> / STATUSREQ)\n");
     fflush(stdout);
 
     //watch stdin and the socket at the same time, to prevent busy 

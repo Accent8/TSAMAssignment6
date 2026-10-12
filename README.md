@@ -123,4 +123,23 @@ and errors such as failed sends. Example:
 
 ## Client
 
-TODO: client behaviour, input format and output.
+The client connects to the server given on the command line (getaddrinfo() resolves the address and each returned address is tried until one connects), then reads commands from stdin, one command per line:
+
+`SENDMSG,<from>,<to>,<message>`
+`GETMSG,<username>`
+`STATUSREQ`
+
+Each line is sent to the server unchanged, packed into one frame, so the server decides whether a command is valid. Empty lines are ignored, and a line too long to fit into one frame is not sent (the client prints a message instead).
+
+Output. Every command sent and every response received is printed with a timestamp in the same format as the server log:
+
+[12.10.2026 - 20:58:40] sent: SENDMSG,hreimur,dani,hi
+[12.10.2026 - 20:58:40] responce: OK
+
+No busy-waiting. The client uses poll() on stdin and the server socket at the same time, so it blocks until the user types something or the server sends data, and responses are shown as soon as they arrive.
+
+Partial and combined frames. Like the server, the client keeps a buffer of received bytes and only prints a response once its complete frame has arrived. It uses the same framing code (protocol.cpp), so malformed data from the server is discarded the same way. Input from stdin is also buffered until a complete line has been read.
+
+Exiting. The client exits when stdin is closed (Ctrl+D, or end of piped input; an unfinished last line is still sent first), when the server closes the connection (server closed the connection is printed) or on a socket error. SIGPIPE is ignored, so a server that disappears while the client is sending does not kill the client.
+
+The client does not interpret the responses: GETMSG replies (<from>,<message>), NONE and ERROR, <reason> are printed exactly as the server sent them.
