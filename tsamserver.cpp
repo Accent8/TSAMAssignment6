@@ -14,6 +14,7 @@
 #include <arpa/inet.h>
 #include "protocol.h"
 #include <csignal>
+#include "commands.h"
 
 int setUpListen(int port) {
     int listenSock = socket(AF_INET, SOCK_STREAM, 0);
@@ -59,15 +60,16 @@ void acceptClient(int listenSock, std::vector<pollfd>& fds) {
     return;
 }
 
-bool handleClient(int clientSock, std::string& clientBuff) {
+bool handleClient(int clientSock, std::string& clientBuff, Mailbox& mailbox) {
     char buff[2048];
     ssize_t n = recv(clientSock, buff, sizeof(buff), 0);
     if (n > 0) {
         clientBuff.append(buff, n);
         std::string output;
-        while(extractFrame(clientBuff, output)) {
+        while(unpackMsg(clientBuff, output)) {
             std::cout << output << std::endl;
-            std::string response = buildFrame(output);
+            std::string command =handleCommand(output, mailbox);
+            std::string response = packMsg(command);
             if (!sendMsg(clientSock, response)) {
                 return false;
             }
@@ -89,6 +91,7 @@ bool handleClient(int clientSock, std::string& clientBuff) {
 void runServer(int listenSock) {
     std::vector<pollfd> fds;
     std::map<int, std::string> clientBuffers;
+    Mailbox mailbox;
     fds.push_back({listenSock, POLLIN, 0}); // index 0 - listener
 
     while (true) {
@@ -103,12 +106,12 @@ void runServer(int listenSock) {
         }
 
         for(size_t i = 0; i < fds.size(); i++) {
-            if (!(fds[i].revents & POLLIN)) continue; // nothing happens here
+            if (fds[i].revents == 0) continue; // nothing happens here
 
             if (fds[i].fd == listenSock) {
                 acceptClient(listenSock, fds);
             } else {
-                bool clientStatus = handleClient(fds[i].fd, clientBuffers[fds[i].fd]);
+                bool clientStatus = handleClient(fds[i].fd, clientBuffers[fds[i].fd], mailbox);
                 if (clientStatus == false) {
                     close(fds[i].fd);
                     clientBuffers.erase(fds[i].fd);
