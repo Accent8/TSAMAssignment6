@@ -1,5 +1,7 @@
 #include "commands.h"
 
+// STATUSREQ: "user1:count1,user2:count2,..." or "EMPTY"
+// format was given in assignment: no spaces, no trailing comma
 static std::string handleStatusReq(const Mailbox& mailbox) {
     if (mailbox.empty()) {
         return "EMPTY";
@@ -8,23 +10,24 @@ static std::string handleStatusReq(const Mailbox& mailbox) {
     for (const auto& [user, queue] : mailbox) {
         if (!queue.empty()) {
             if (result.empty()) {
-                result += user + ":" + std::to_string(queue.size());
+                result += ","; // separator only between the entries
             } else {
-                result += "," + user + ":" + std::to_string(queue.size());
+                result += user + ":" + std::to_string(queue.size());
             }
         }
     }
     return result;
 }
 
+// SENDMSG,from,to,message
+// only the first two commas separate the fields, message may contain a comma
+// empty messages are also allowed
 static std::string handleSendMsg(const std::string& args, Mailbox& mailbox) {
-    // find the first comma: author of the message
-    size_t c1 = args.find(',');
+    size_t c1 = args.find(','); // end of from
     if (c1 == std::string::npos) {
         return "ERROR, missing fields";
     }
-    // find the second comma: recipient of the message
-    size_t c2 = args.find(',', c1 + 1);
+    size_t c2 = args.find(',', c1 + 1); // end of to
     if (c2 == std::string::npos) {
         return "ERROR, missing field";
     }
@@ -44,11 +47,15 @@ static std::string handleSendMsg(const std::string& args, Mailbox& mailbox) {
     return "OK";
 }
 
+// GETMSG,user
+// returns the oldest message, then it gets deleted
+// or none if there are no messages
 static std::string handleGetMsg(const std::string& user, Mailbox& mailbox) {
     if (user.empty()) {
         return "ERROR, missing user";
     }
 
+    // find() instead of [] so we dont create a new empty entry
     auto entry = mailbox.find(user);
     if (entry == mailbox.end()) {
         return "NONE";
@@ -65,11 +72,12 @@ static std::string handleGetMsg(const std::string& user, Mailbox& mailbox) {
 }
 
 std::string handleCommand(const std::string& cmd, Mailbox& mailbox) {
+    // splitt of the command name, args is the only thing we want after the first comma
     size_t comma = cmd.find(',');
-    std::string name = cmd.substr(0, comma);
+    std::string name = cmd.substr(0, comma); // whole command if there is no comma
     std::string args = (comma == std::string::npos) ? "" : cmd.substr(comma + 1);
 
-    if (name == "STATUSREQ") return handleStatusReq(mailbox);
+    if (name == "STATUSREQ") return handleStatusReq(mailbox); // extra args are ignored
     else if (name == "SENDMSG") return handleSendMsg(args, mailbox);
     else if (name == "GETMSG") return handleGetMsg(args, mailbox); 
     else return "ERROR, unknown command";
