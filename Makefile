@@ -3,8 +3,8 @@ CXXFLAGS = -std=c++17 -Wall -Wextra
 
 all: tsamserver tsamclient
 
-tsamserver: tsamserver.cpp protocol.cpp commands.cpp protocol.h commands.h
-	$(CXX) $(CXXFLAGS) -o $@ tsamserver.cpp protocol.cpp commands.cpp
+tsamserver: tsamserver.cpp protocol.cpp commands.cpp protocol.h commands.h logger.h logger.cpp
+	$(CXX) $(CXXFLAGS) -o $@ tsamserver.cpp protocol.cpp commands.cpp logger.cpp
 
 tsamclient: tsamclient.cpp protocol.cpp protocol.h
 	$(CXX) $(CXXFLAGS) -o $@ tsamclient.cpp protocol.cpp

@@ -15,6 +15,12 @@
 #include "protocol.h"
 #include <csignal>
 #include "commands.h"
+#include "logger.h"
+
+struct Client {
+    std::string name; // 127.0.0.1:52344 (fd 4) for example
+    std::string buffer; // bytes recevied but not framed yet
+};
 
 int setUpListen(int port) {
     int listenSock = socket(AF_INET, SOCK_STREAM, 0);
@@ -49,48 +55,73 @@ int setUpListen(int port) {
     return listenSock;
 }
 
-void acceptClient(int listenSock, std::vector<pollfd>& fds) {
-    int client = accept(listenSock, nullptr, nullptr);
-    if (client < 0) {
-        perror("accept");
+void acceptClient(int listenSock, std::vector<pollfd>& fds, std::map<int, Client>& clients) {
+    sockaddr_in addr{};
+    socklen_t addrLen = sizeof(addr);
+    int fd = accept(listenSock, (sockaddr*)&addr, &addrLen);
+    if (fd < 0) {
+        logLine(std::string("accept failed: ") + strerror(errno));
         return;
     }
-    fds.push_back({client, POLLIN, 0});
-    std::cout << "Client " << client << " connected" << std::endl;
-    return;
+
+    char ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
+    std::string name = std::string(ip) + ":" + std::to_string(ntohs(addr.sin_port))
+                    + " (fd " + std::to_string(fd) + ")";
+
+    fds.push_back({fd, POLLIN, 0});
+    clients[fd].name = name;
+    logLine("Client " + name + " connected");
 }
 
-bool handleClient(int clientSock, std::string& clientBuff, Mailbox& mailbox) {
+bool handleClient(int clientSock, Client& client, Mailbox& mailbox) {
     char buff[2048];
     ssize_t n = recv(clientSock, buff, sizeof(buff), 0);
-    if (n > 0) {
-        clientBuff.append(buff, n);
-        std::string output;
-        while(unpackMsg(clientBuff, output)) {
-            std::cout << output << std::endl;
-            std::string command =handleCommand(output, mailbox);
-            std::string response = packMsg(command);
-            if (!sendMsg(clientSock, response)) {
-                return false;
-            }
-        }
-        return true;
-        } else if (n == 0) {
-        std::cout << "Client " << clientSock << " disconnected" << std::endl;
+    if (n == 0) {
+        logLine("Client " + client.name + " disconnected");
         return false;
-    } else {
-        if (errno == EINTR) {
-            return true;
-        } else {
-            perror("recv");
+    }
+    if (n < 0) {
+        if (errno == EINTR) return true;
+        logLine("recv from " + client.name + " failed: " + strerror(errno));
+        return false;
+    }
+    
+    client.buffer.append(buff, n);
+
+    while (true) {
+        std::string cmd;
+        size_t discarded = 0;
+        bool gotFrame = unpackMsg(client.buffer, cmd, &discarded);
+
+        if (discarded > 0) {
+            logLine("Discarded " + std::to_string(discarded)
+                    + " malformed bytes from " + client.name);
+        }
+        if (!gotFrame) break; // need more data
+
+        logLine("recv from " + client.name + ": " + cmd);
+
+        std::string response = handleCommand(cmd, mailbox);
+        std::string frame = packMsg(response);
+        if (frame.empty()) { // response too large to fit ito 1 frame
+            logLine("Response for " + client.name + " too large, sending error instead");
+            response = "ERROR, response too large";
+            frame = packMsg(response);
+        }
+
+        if (!sendMsg(clientSock, frame)) {
+            logLine("send to " + client.name + " failed: " + strerror(errno));
             return false;
         }
+        logLine("send to " + client.name + ": " + response);
     }
+    return true;
 }
 
 void runServer(int listenSock) {
     std::vector<pollfd> fds;
-    std::map<int, std::string> clientBuffers;
+    std::map<int, Client> clients;
     Mailbox mailbox;
     fds.push_back({listenSock, POLLIN, 0}); // index 0 - listener
 
@@ -100,7 +131,7 @@ void runServer(int listenSock) {
             if (errno == EINTR) {
                 continue;
             } else {
-                perror("poll");
+                logLine(std::string("poll failed: ") + strerror(errno));
                 break;
             }
         }
@@ -109,12 +140,12 @@ void runServer(int listenSock) {
             if (fds[i].revents == 0) continue; // nothing happens here
 
             if (fds[i].fd == listenSock) {
-                acceptClient(listenSock, fds);
+                acceptClient(listenSock, fds, clients);
             } else {
-                bool clientStatus = handleClient(fds[i].fd, clientBuffers[fds[i].fd], mailbox);
-                if (clientStatus == false) {
-                    close(fds[i].fd);
-                    clientBuffers.erase(fds[i].fd);
+                int fd = fds[i].fd;
+                if (!handleClient(fd, clients[fd], mailbox)) {
+                    close(fd);
+                    clients.erase(fd);
                     fds[i].fd = -1;
                 }
             }
@@ -128,16 +159,36 @@ void runServer(int listenSock) {
 int main(int argc, char* argv[]){
     if (argc != 2) {
         std::cerr << "incorrect amount of args" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <port>" << std::endl;
         return 1;
     }
-    signal(SIGPIPE, SIG_IGN);
-    int listenFD = setUpListen(std::stoi(argv[1]));
-    if (listenFD < 0) {
-        std::cerr << "listenSocket failed!" << std::endl;
+    int port;
+    try {
+        port = std::stoi(argv[1]);
+    } catch (const std::exception&) {
+        std::cerr << "invalid port: " << argv[1] << std::endl;
         return 1;
     }
-    runServer(listenFD);
+    if (port < 1 || port > 65535) {
+        std::cerr << "port must be between 1 and 65535" << std::endl;
+        return 1;
+    }
+    if (!initLog("server.log")) {
+        std::cerr << "cannot open log file" << std::endl;
+        return 1;
+    }
 
+    signal(SIGPIPE, SIG_IGN);
+
+    int listenSock = setUpListen(port);
+    if (listenSock < 0) {
+        logLine("Failed on listen on port: " + std::to_string(port));
+        return 1;
+    }
+    logLine("Server listening on port: " + std::to_string(port));
+
+    runServer(listenSock);
+    close(listenSock);
     return 0;
 }
 
