@@ -65,9 +65,9 @@ bool handleClient(int clientSock, std::string& clientBuff) {
     if (n > 0) {
         clientBuff.append(buff, n);
         std::string output;
-        while(extractFrame(clientBuff, output)) {
+        while(unpackMsg(clientBuff, output)) {
             std::cout << output << std::endl;
-            std::string response = buildFrame(output);
+            std::string response = packMsg(output);
             if (!sendMsg(clientSock, response)) {
                 return false;
             }
