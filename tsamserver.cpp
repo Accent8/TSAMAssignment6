@@ -12,6 +12,8 @@
 #include <map>
 #include <cstring>
 #include <arpa/inet.h>
+#include "protocol.h"
+#include <csignal>
 
 int setUpListen(int port) {
     int listenSock = socket(AF_INET, SOCK_STREAM, 0);
@@ -62,40 +64,16 @@ bool handleClient(int clientSock, std::string& clientBuff) {
     ssize_t n = recv(clientSock, buff, sizeof(buff), 0);
     if (n > 0) {
         clientBuff.append(buff, n);
-        while(true) {
-            if (clientBuff.length() < 4) {
-                break;
+        std::string output;
+        while(extractFrame(clientBuff, output)) {
+            std::cout << output << std::endl;
+            std::string response = buildFrame(output);
+            if (!sendMsg(clientSock, response)) {
+                return false;
             }
-            if (clientBuff[0] != '\x01') {
-                size_t pos = clientBuff.find('\x01');
-                if (pos != std::string::npos) {
-                    clientBuff.erase(0, pos);
-                    continue;
-                } else {
-                    clientBuff.clear();
-                    break;
-                }
-            }
-            uint16_t netLen;
-            std::memcpy(&netLen, clientBuff.data() + 1, 2);
-            uint16_t len = ntohs(netLen);
-            if (len < 5 || len > 5000 || clientBuff[3] != '\x02') {
-                clientBuff.erase(0, 1); // Drop the first byte
-                continue;
-            }
-            if (clientBuff.size() < len) {
-                break;
-            }
-            if (clientBuff[len - 1] != '\x03') {
-                clientBuff.erase(0, 1);
-                continue;
-            }
-            std::string cmd = clientBuff.substr(4, len - 5);
-            clientBuff.erase(0, len);
-            std::cout << "Client " << clientSock << ": " << cmd << std::endl;
         }
         return true;
-    } else if (n == 0) {
+        } else if (n == 0) {
         std::cout << "Client " << clientSock << " disconnected" << std::endl;
         return false;
     } else {
@@ -149,7 +127,7 @@ int main(int argc, char* argv[]){
         std::cerr << "incorrect amount of args" << std::endl;
         return 1;
     }
-
+    signal(SIGPIPE, SIG_IGN);
     int listenFD = setUpListen(std::stoi(argv[1]));
     if (listenFD < 0) {
         std::cerr << "listenSocket failed!" << std::endl;
