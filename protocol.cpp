@@ -1,4 +1,3 @@
-#include <iostream>
 #include "protocol.h"
 #include <string>
 #include <arpa/inet.h>
@@ -40,7 +39,7 @@ bool sendMsg(int fd, const std::string& data) {
     return true;
 }
 
-bool unpackMsg(std::string& buf, std::string& out) {
+bool unpackMsg(std::string& buf, std::string& out, size_t* discarded) {
     while (true) {
         if (buf.length() < HEADER_SIZE) {
             return false;
@@ -48,12 +47,12 @@ bool unpackMsg(std::string& buf, std::string& out) {
         if (buf[0] != SOH) {
             size_t pos = buf.find(SOH);
             if (pos != std::string::npos) {
-                std::cerr << "Skipping til next SOH" << std::endl;
+                if (discarded) *discarded += pos; // skipped garbage before next SOH
                 buf.erase(0, pos);
                 continue;
             } else {
+                if (discarded) *discarded += buf.size(); // No SOH at all, everything deleted
                 buf.clear();
-                std::cerr << "No SOH" << std::endl;
                 return false;
             }
         }
@@ -61,7 +60,7 @@ bool unpackMsg(std::string& buf, std::string& out) {
         std::memcpy(&netLen, buf.data() + 1, 2);
         uint16_t len = ntohs(netLen);
         if (len < FRAME_OVERHEAD || len > MAX_FRAME || buf[3] != STX) {
-            std::cerr << "Bad STX or length out of range" << std::endl;
+            if (discarded) *discarded += 1;
             buf.erase(0, 1); // Drop the first byte
             continue;
         }
@@ -69,7 +68,7 @@ bool unpackMsg(std::string& buf, std::string& out) {
             return false;
         }
         if (buf[len - 1] != ETX) {
-            std::cerr << "Bad ETX" << std::endl;
+            if (discarded) *discarded += 1;
             buf.erase(0, 1);
             continue;
         }

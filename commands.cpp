@@ -72,5 +72,5 @@ std::string handleCommand(const std::string& cmd, Mailbox& mailbox) {
     if (name == "STATUSREQ") return handleStatusReq(mailbox);
     else if (name == "SENDMSG") return handleSendMsg(args, mailbox);
     else if (name == "GETMSG") return handleGetMsg(args, mailbox); 
-    else return "ERROR, unkown command";
+    else return "ERROR, unknown command";
 }
