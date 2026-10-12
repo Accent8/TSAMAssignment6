@@ -9,6 +9,7 @@ constexpr size_t MAX_FRAME = 5000;
 constexpr int HEADER_SIZE = 4;
 constexpr int FRAME_OVERHEAD = 5;
 
-std::string buildFrame(const std::string& payload);
+std::string packMsg(const std::string& payload);
 bool sendMsg(int fd, const std::string& data);
-bool extractFrame(std::string& buf, std::string& out);
+bool unpackMsg(std::string& buf, std::string& out);
+std::string timestamp();

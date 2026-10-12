@@ -6,7 +6,7 @@
 #include <cerrno>
 #include <cstring>
 
-std::string buildFrame(const std::string& payload) {
+std::string packMsg(const std::string& payload) {
     std::string frame;
     size_t totalLength = payload.size() + FRAME_OVERHEAD;
     if (totalLength > MAX_FRAME) {
@@ -39,7 +39,7 @@ bool sendMsg(int fd, const std::string& data) {
     return true;
 }
 
-bool extractFrame(std::string& buf, std::string& out) {
+bool unpackMsg(std::string& buf, std::string& out) {
     while (true) {
         if (buf.length() < HEADER_SIZE) {
             return false;
@@ -76,4 +76,11 @@ bool extractFrame(std::string& buf, std::string& out) {
         buf.erase(0, len);
         return true;
     }
+}
+
+std::string timestamp(){
+    time_t curr= time(nullptr);
+    char buf[32];
+    strftime(buf, sizeof buf, "%d.%m.%Y - %H:%M:%S", localtime(&curr));
+    return buf
 }
