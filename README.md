@@ -142,4 +142,4 @@ Partial and combined frames. Like the server, the client keeps a buffer of recei
 
 Exiting. The client exits when stdin is closed (Ctrl+D, or end of piped input; an unfinished last line is still sent first), when the server closes the connection (server closed the connection is printed) or on a socket error. SIGPIPE is ignored, so a server that disappears while the client is sending does not kill the client.
 
-The client does not interpret the responses: GETMSG replies (<from>,<message>), NONE and ERROR, <reason> are printed exactly as the server sent them.
+The client does not interpret the responses: GETMSG replies `(<from>,<message>)`, NONE and ERROR, `<reason>` are printed exactly as the server sent them.

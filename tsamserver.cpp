@@ -15,12 +15,15 @@
 #include "protocol.h"
 #include <csignal>
 #include "commands.h"
-#include "logger.h"
+#include "log_event.h"
+#include "identity.h"
 
 // Per connection state
 struct Client {
-    std::string name; // 127.0.0.1:52344 (fd 4) for example
     std::string buffer; // bytes recevied but not a complete frame yet
+    std::string ip;
+    int port;
+    std::string groupID;
 };
 
 // Creates a TCP socket for listening on the given port
@@ -66,11 +69,12 @@ void acceptClient(int listenSock, std::vector<pollfd>& fds, std::map<int, Client
     socklen_t addrLen = sizeof(addr);
     int fd = accept(listenSock, (sockaddr*)&addr, &addrLen); // kernel fills in the peer address
     if (fd < 0) {
-        logLine(std::string("accept failed: ") + strerror(errno));
+        log_note("accept() failed: %s", strerror(errno));
         return;
     }
 
     char ip[INET_ADDRSTRLEN];
+    int port = ntohs(addr.sin_port);
     inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip));
     std::string name = std::string(ip) + ":" + std::to_string(ntohs(addr.sin_port))
                     + " (fd " + std::to_string(fd) + ")";
@@ -78,8 +82,9 @@ void acceptClient(int listenSock, std::vector<pollfd>& fds, std::map<int, Client
     // revents starts at 0, so if this push happens during runServers loop
     // the new entry is skipped this round and picked up next poll()
     fds.push_back({fd, POLLIN, 0});
-    clients[fd].name = name;
-    logLine("Client " + name + " connected");
+    clients[fd].ip = ip;
+    clients[fd].port = port;
+    log_event("ACCEPT", ip, port, NULL, NULL);
 }
 
 // Handles one readable event on a clients socket: receives available bytes
@@ -90,12 +95,12 @@ bool handleClient(int clientSock, Client& client, Mailbox& mailbox) {
     char buff[2048];
     ssize_t n = recv(clientSock, buff, sizeof(buff), 0); // wont block, poll said its ready
     if (n == 0) {
-        logLine("Client " + client.name + " disconnected");
+        log_event("CLOSE", client.ip.c_str(), client.port, NULL, "disconnected");
         return false;
     }
     if (n < 0) {
         if (errno == EINTR) return true; // interrupted, poll will report and try again
-        logLine("recv from " + client.name + " failed: " + strerror(errno));
+        log_event("CLOSE", client.ip.c_str(), client.port, NULL, strerror(errno));
         return false;
     }
     
@@ -111,26 +116,26 @@ bool handleClient(int clientSock, Client& client, Mailbox& mailbox) {
         // Checked even when no frame was found, a failed call
         // could have thrown away garbage
         if (discarded > 0) {
-            logLine("Discarded " + std::to_string(discarded)
-                    + " malformed bytes from " + client.name);
+            std::string discardMsg = "Discarded malformed bytes: " + std::to_string(discarded);
+            log_event("DROP", client.ip.c_str(), client.port, NULL, discardMsg.c_str());
         }
         if (!gotFrame) break; // rest of the buffer is incomplete frame
 
-        logLine("recv from " + client.name + ": " + cmd);
+        log_event_bytes("RECV", client.ip.c_str(), client.port, NULL, cmd.c_str(), cmd.length());
 
         std::string response = handleCommand(cmd, mailbox);
         std::string frame = packMsg(response);
         if (frame.empty()) { // response too large to fit ito 1 frame
-            logLine("Response for " + client.name + " too large, sending error instead");
+            log_note("Error, response too large");
             response = "ERROR, response too large";
             frame = packMsg(response);
         }
 
         if (!sendMsg(clientSock, frame)) {
-            logLine("send to " + client.name + " failed: " + strerror(errno));
+            log_event("CLOSE", client.ip.c_str(), client.port, NULL, "sendMsg failed");
             return false;
         }
-        logLine("send to " + client.name + ": " + response);
+        log_event_bytes("SEND", client.ip.c_str(), client.port, NULL, response.c_str(), response.length());
     }
     return true;
 }
@@ -148,7 +153,7 @@ void runServer(int listenSock) {
             if (errno == EINTR) {
                 continue; // interrupted by a signal, not an error
             } else {
-                logLine(std::string("poll failed: ") + strerror(errno));
+                log_note("Poll failed: %s", strerror(errno));
                 break;
             }
         }
@@ -194,10 +199,6 @@ int main(int argc, char* argv[]){
         std::cerr << "port must be between 1 and 65535" << std::endl;
         return 1;
     }
-    if (!initLog("server.log")) {
-        std::cerr << "cannot open log file" << std::endl;
-        return 1;
-    }
 
     // Without this, send() to a client that has disconnected raises SIGPIPE
     // which kills the whole server, ignored send() just fails with EPIPE
@@ -205,10 +206,12 @@ int main(int argc, char* argv[]){
 
     int listenSock = setUpListen(port);
     if (listenSock < 0) {
-        logLine("Failed on listen on port: " + std::to_string(port));
+        std::string listenFail = "Failed to listen on " + std::to_string(port);
+        log_note("%s", listenFail.c_str());
         return 1;
     }
-    logLine("Server listening on port: " + std::to_string(port));
+    std::string msg = "listening on port " + std::to_string(port);
+    log_event("START", NULL, 0, GROUP_ID, msg.c_str());
 
     runServer(listenSock);
     close(listenSock);
